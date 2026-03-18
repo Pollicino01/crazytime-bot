@@ -1,0 +1,5 @@
+requirements.txt
+pyTelegramBotAPI
+requests
+beautifulsoup4
+flask
