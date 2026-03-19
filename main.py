@@ -1,3 +1,7 @@
+"""
+BOT CRAZY TIME — Deploy su Render.com
+Monitora il gioco Crazy Time su Tracksino e invia segnali Telegram.
+
 Variabili d'ambiente richieste:
   TELEGRAM_TOKEN  →  7781765395:AAHanJK1rZKZrvwh_Stu54n-YVrS3X_iGeU (da @BotFather)
   CHANNEL_ID      →  @pollicino03 (es. @miocanale)
