@@ -4,7 +4,7 @@ Monitora il gioco Crazy Time su Tracksino e invia segnali Telegram.
 
 Variabili d'ambiente richieste:
   TELEGRAM_TOKEN  →  8754079194:AAEOU2e5HsWnUW1af_vOhEhf7LXU8KciHOM (da @BotFather)
-  CHANNEL_ID      →  @pollicino03 (es. @miocanale)
+  CHANNEL_ID      →  @pollicino01 (es. @miocanale)
 """
 
 import os
