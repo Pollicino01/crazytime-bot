@@ -91,7 +91,7 @@ def get_n5_spins_since():
             return None
         html = r.text
 
-        # --- METODO 1: API PAYLOAD JSON ---
+        # --- METODO 1: API PAYLOAD JSON (Ricerca Dinamica) ---
         build_match = re.search(r'"buildId"\s*:\s*"([^"]+)"', html)
         if build_match:
             build_id = build_match.group(1)
@@ -100,20 +100,22 @@ def get_n5_spins_since():
             res_payload = scraper.get(payload_url, headers=headers, timeout=15)
             if res_payload.status_code == 200:
                 data = res_payload.json()
-                def find_n5(obj):
+                
+                # Funzione ricorsiva per trovare n5 in qualsiasi struttura JSON
+                def find_n5_recursive(obj):
                     if isinstance(obj, dict):
-                        if 'n5' in obj and 'spins_since' in obj['n5']:
+                        if 'n5' in obj and isinstance(obj['n5'], dict) and 'spins_since' in obj['n5']:
                             return obj['n5']['spins_since']
-                        for v in obj.values():
-                            res = find_n5(v)
+                        for k, v in obj.items():
+                            res = find_n5_recursive(v)
                             if res is not None: return res
                     elif isinstance(obj, list):
-                        for i in obj:
-                            res = find_n5(i)
+                        for item in obj:
+                            res = find_n5_recursive(item)
                             if res is not None: return res
                     return None
                 
-                val = find_n5(data)
+                val = find_n5_recursive(data)
                 if val is not None:
                     log.info(f"🎯 [API JSON] n5 spins_since: {val}")
                     return int(val)
