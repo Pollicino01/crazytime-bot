@@ -25,6 +25,7 @@ logging.basicConfig(
 log = logging.getLogger("crazy-time-bot")
 
 # ── CREDENZIALI & CONFIG ─────────────────────────────────────
+# Inserite direttamente come richiesto
 TELEGRAM_TOKEN = "8754079194:AAEOU2e5HsWnUW1af_vOhEhf7LXU8KciHOM"
 CHAT_ID        = "670873588"
 PORT           = int(os.environ.get("PORT", 10000))
@@ -64,7 +65,7 @@ def invia(msg):
     except Exception as e:
         log.error(f"Errore Telegram: {e}")
 
-# ── NUXT PARSER (FALLBACK) ──────────────────────────────────
+# ── NUXT PARSER (FALLBACK ESTREMO) ──────────────────────────
 def _parse_nuxt_args(html):
     try:
         pm = re.search(r'window\.__NUXT__=\(function\(([^)]+)\)', html)
@@ -91,7 +92,7 @@ def get_n5_spins_since():
             return None
         html = r.text
 
-        # --- METODO 1: API PAYLOAD JSON (Ricerca Dinamica) ---
+        # --- METODO 1: API PAYLOAD JSON (Ricerca Ricorsiva) ---
         build_match = re.search(r'"buildId"\s*:\s*"([^"]+)"', html)
         if build_match:
             build_id = build_match.group(1)
@@ -101,21 +102,21 @@ def get_n5_spins_since():
             if res_payload.status_code == 200:
                 data = res_payload.json()
                 
-                # Funzione ricorsiva per trovare n5 in qualsiasi struttura JSON
-                def find_n5_recursive(obj):
+                # Cerca n5 in profondità nel JSON
+                def find_n5(obj):
                     if isinstance(obj, dict):
-                        if 'n5' in obj and isinstance(obj['n5'], dict) and 'spins_since' in obj['n5']:
-                            return obj['n5']['spins_since']
-                        for k, v in obj.items():
-                            res = find_n5_recursive(v)
+                        if 'n5' in obj and isinstance(obj['n5'], dict):
+                            return obj['n5'].get('spins_since')
+                        for v in obj.values():
+                            res = find_n5(v)
                             if res is not None: return res
                     elif isinstance(obj, list):
-                        for item in obj:
-                            res = find_n5_recursive(item)
+                        for i in obj:
+                            res = find_n5(i)
                             if res is not None: return res
                     return None
                 
-                val = find_n5_recursive(data)
+                val = find_n5(data)
                 if val is not None:
                     log.info(f"🎯 [API JSON] n5 spins_since: {val}")
                     return int(val)
@@ -133,7 +134,7 @@ def get_n5_spins_since():
 
         return None
     except Exception as e:
-        log.error(f"Errore critico estrazione: {e}")
+        log.error(f"Errore estrazione: {e}")
         return None
 
 # ── LOGICA GIOCO ─────────────────────────────────────────────
@@ -187,7 +188,7 @@ def process_spin(tipo):
                 else:
                     invia(f"❌ Ciclo perso. Restano {12-sessioni_contate} cicli.")
 
-# ── WEB SERVER ──────────────────────────────────────────────
+# ── WEB SERVER (KEEPALIVE) ───────────────────────────────────
 app = Flask(__name__)
 @app.route('/')
 def health(): return "Bot Online", 200
