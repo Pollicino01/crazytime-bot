@@ -1,4 +1,4 @@
-pyTelegramBotAPI==4.14.1
-requests==2.31.0
-flask==3.0.0
-beautifulsoup4==4.12.2
+pyTelegramBotAPI
+requests
+beautifulsoup4 
+flask
