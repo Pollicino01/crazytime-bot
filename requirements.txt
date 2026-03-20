@@ -1,4 +1,4 @@
-curl_cffi
 pyTelegramBotAPI
-flask
-beautifulsoup4
+requests
+Flask
+cloudscraper
