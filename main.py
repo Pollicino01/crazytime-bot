@@ -1,9 +1,3 @@
-"""
-BOT CRAZY TIME — Versione Definitiva 5.0
-Monitoraggio n5 via API Payload JSON + Fallback NUXT Parser.
-Ottimizzato per Render.com (Anti-ban & Cloudflare Bypass).
-"""
-
 import os
 import re
 import time
@@ -31,7 +25,6 @@ logging.basicConfig(
 log = logging.getLogger("crazy-time-bot")
 
 # ── CREDENZIALI & CONFIG ─────────────────────────────────────
-# Inserite direttamente come richiesto
 TELEGRAM_TOKEN = "8754079194:AAEOU2e5HsWnUW1af_vOhEhf7LXU8KciHOM"
 CHAT_ID        = "670873588"
 PORT           = int(os.environ.get("PORT", 10000))
@@ -92,14 +85,13 @@ def get_n5_spins_since():
         scraper = _get_scraper()
         headers = _build_headers()
         
-        # Scarichiamo la pagina principale
         r = scraper.get(TRACKSINO_URL, headers=headers, timeout=25)
         if r.status_code != 200: 
             log.warning(f"Tracksino irraggiungibile (HTTP {r.status_code})")
             return None
         html = r.text
 
-        # --- METODO 1: API PAYLOAD JSON (Più stabile) ---
+        # --- METODO 1: API PAYLOAD JSON ---
         build_match = re.search(r'"buildId"\s*:\s*"([^"]+)"', html)
         if build_match:
             build_id = build_match.group(1)
@@ -108,7 +100,6 @@ def get_n5_spins_since():
             res_payload = scraper.get(payload_url, headers=headers, timeout=15)
             if res_payload.status_code == 200:
                 data = res_payload.json()
-                # Ricerca ricorsiva sicura del valore n5 nel JSON
                 def find_n5(obj):
                     if isinstance(obj, dict):
                         if 'n5' in obj and 'spins_since' in obj['n5']:
@@ -168,7 +159,7 @@ def process_spin(tipo):
                 invia(f"❌ Ciclo Base fallito {cicli_falliti}/8")
                 if cicli_falliti >= 8:
                     stato, sessioni_contate = "SESSIONE", 0
-                    invia("⚠️ TRIGGER ATTIVATO!\nInizia SESSIONE di 12 cicli.\nAttendi il prossimo 5 per puntare.")
+                    invia("⚠️ TRIGGER ATTIVATO!\nInizia SESSIONE di 12 cicli.\nAttendi il prossimo 5.")
 
     elif stato == "SESSIONE":
         if fase_ciclo == 0 and is_cinque:
@@ -176,15 +167,46 @@ def process_spin(tipo):
             fase_ciclo = 1
         elif fase_ciclo == 1:
             if is_cinque:
-                invia("✅ VINTO al 1° colpo! 🎉"); stato, cicli_falliti, fase_ciclo = "FILTRO", 0, 0
+                invia("✅ VINTO al 1° colpo! 🎉")
+                stato, cicli_falliti, fase_ciclo = "FILTRO", 0, 0
             else:
-                fase_ciclo = 2; invia("⚠️ Perso 1° colpo — Punta ancora sul prossimo 5")
+                fase_ciclo = 2
+                invia("⚠️ Perso 1° colpo — Riprova sul prossimo 5")
         elif fase_ciclo == 2:
             if is_cinque:
-                invia("✅ VINTO al 2° colpo! 🎉"); stato, cicli_falliti, fase_ciclo = "FILTRO", 0, 0
+                invia("✅ VINTO al 2° colpo! 🎉")
+                stato, cicli_falliti, fase_ciclo = "FILTRO", 0, 0
             else:
-                sessioni_contate += 1; fase_ciclo = 0
+                sessioni_contate += 1
+                fase_ciclo = 0
                 if sessioni_contate >= 12:
-                    invia("🛑 12 cicli esauriti. Reset."); stato, cicli_falliti = "FILTRO", 0
+                    invia("🛑 12 cicli esauriti. Reset.")
+                    stato, cicli_falliti = "FILTRO", 0
                 else:
-                    invia(f"❌ Ciclo perso. Rest
+                    invia(f"❌ Ciclo perso. Restano {12-sessioni_contate} cicli.")
+
+# ── WEB SERVER ──────────────────────────────────────────────
+app = Flask(__name__)
+@app.route('/')
+def health(): return "Bot Online", 200
+
+def bot_loop():
+    global prev_spins_since
+    log.info("🚀 Monitoraggio avviato.")
+    invia("🚀 Bot ONLINE\n📡 Monitoraggio n5 attivo.")
+    
+    while True:
+        curr = get_n5_spins_since()
+        if curr is not None:
+            if prev_spins_since is not None and curr != prev_spins_since:
+                if curr < prev_spins_since:
+                    process_spin("5")
+                    for _ in range(curr): process_spin("non5")
+                else:
+                    for _ in range(curr - prev_spins_since): process_spin("non5")
+            prev_spins_since = curr
+        time.sleep(random.uniform(POLL_MIN, POLL_MAX))
+
+if __name__ == "__main__":
+    Thread(target=lambda: app.run(host="0.0.0.0", port=PORT, use_reloader=False)).start()
+    bot_loop()
