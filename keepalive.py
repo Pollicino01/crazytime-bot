@@ -1,34 +1,19 @@
-"""
-keepalive.py — Evita lo sleep del piano free di Render.
-Invia un ping al proprio URL ogni 14 minuti.
-
-Uso: avviare in un thread separato dal bot.
-Oppure configurare un servizio esterno come cron-job.org
-per fare GET sul tuo URL /ping ogni 14 minuti.
-"""
-
-import os
 import time
-import logging
 import requests
+import os
+import logging
 
 log = logging.getLogger("keepalive")
 
-RENDER_URL     = os.environ.get("RENDER_EXTERNAL_URL", "")
-PING_INTERVAL  = 14 * 60  # 14 minuti (Render dorme dopo 15)
-
-
 def keepalive_loop():
-    if not RENDER_URL:
-        log.info("RENDER_EXTERNAL_URL non impostato — keepalive disabilitato")
-        return
-
-    log.info("🔄 Keepalive attivo → %s/ping ogni %dm", RENDER_URL, PING_INTERVAL // 60)
-
+    """Pinga se stesso ogni 5 minuti per non addormentarsi su Render free tier."""
+    port = int(os.environ.get("PORT", 10000))
+    url  = f"http://localhost:{port}/ping"
     while True:
         try:
-            r = requests.get(f"{RENDER_URL}/ping", timeout=10)
-            log.info("🏓 Keepalive ping: %d", r.status_code)
+            r = requests.get(url, timeout=10)
+            log.debug("Keepalive ping → %d", r.status_code)
         except Exception as e:
-            log.warning("⚠️ Keepalive ping fallito: %s", e)
-        time.sleep(PING_INTERVAL)
+            log.warning("Keepalive ping fallito: %s", e)
+        time.sleep(300)
+        
