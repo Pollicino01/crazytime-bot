@@ -6,7 +6,6 @@ import requests
 log = logging.getLogger("keepalive")
 
 def keepalive_loop():
-    """Pinga il server ogni 5 minuti per evitare lo spin-down su Render free tier."""
     port = int(os.environ.get("PORT", 10000))
     url  = f"http://localhost:{port}/ping"
     while True:
@@ -16,4 +15,3 @@ def keepalive_loop():
         except Exception as e:
             log.warning("⚠️ Keepalive ping fallito: %s", e)
         time.sleep(300)
-        
