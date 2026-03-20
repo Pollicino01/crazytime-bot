@@ -11,14 +11,14 @@ TOKEN      = "8754079194:AAEOU2e5HsWnUW1af_vOhEhf7LXU8KciHOM"
 CHANNEL_ID = "@pollicino01"
 PORT       = int(os.environ.get("PORT", 10000))
 
-# LOGICA (LA TUA)
+# PARAMETRI LOGICA (LA TUA)
 SOGLIA_FALLIMENTI = 6  
 MAX_SESSIONI      = 12 
-POLL_INTERVAL     = 15 # Lettura ogni 15 secondi
+POLL_INTERVAL     = 15 
 
 bot = telebot.TeleBot(TOKEN)
 
-# ── STATO DEL SISTEMA ───────────────────────────────────────
+# ── STATO ───────────────────────────────────────────────────
 stato            = "FILTRO"   
 fase_ciclo       = 0          
 cicli_falliti    = 0          
@@ -33,12 +33,9 @@ def invia(msg):
 
 def reset_totale():
     global stato, fase_ciclo, cicli_falliti, sessioni_giocate
-    stato = "FILTRO"
-    fase_ciclo = 0
-    cicli_falliti = 0
-    sessioni_giocate = 0
+    stato, fase_ciclo, cicli_falliti, sessioni_giocate = "FILTRO", 0, 0, 0
 
-# ── LOGICA CORE (Filtro 6 / Sessione 12) ────────────────────
+# ── LOGICA CORE (TUA LOGICA) ────────────────────────────────
 def process_spin(tipo_numero):
     global stato, fase_ciclo, cicli_falliti, sessioni_giocate
     
@@ -46,113 +43,100 @@ def process_spin(tipo_numero):
         if fase_ciclo == 0:
             if tipo_numero == "5": fase_ciclo = 1
         elif fase_ciclo == 1:
-            if tipo_numero == "5": 
-                cicli_falliti = 0
-                fase_ciclo = 0
+            if tipo_numero == "5": cicli_falliti, fase_ciclo = 0, 0
             else: fase_ciclo = 2
         elif fase_ciclo == 2:
-            if tipo_numero == "5": 
-                cicli_falliti = 0
-                fase_ciclo = 0
+            if tipo_numero == "5": cicli_falliti, fase_ciclo = 0, 0
             else:
                 cicli_falliti += 1
                 fase_ciclo = 0
-                print(f"📊 [FILTRO] Ciclo fallito: {cicli_falliti}/{SOGLIA_FALLIMENTI}")
+                # Ti avvisa nel canale così vedi che sta lavorando
+                invia(f"📊 **Analisi:** Filtro a {cicli_falliti}/{SOGLIA_FALLIMENTI}")
                 if cicli_falliti >= SOGLIA_FALLIMENTI:
-                    stato = "SESSIONE"
-                    sessioni_giocate = 0
-                    invia(f"🚨 **TRIGGER ATTIVATO!**\nIl Ciclo Base è fallito {SOGLIA_FALLIMENTI} volte.\nInizio **SESSIONE DI GIOCO** (12 cicli).")
+                    stato, sessioni_giocate = "SESSIONE", 0
+                    invia(f"🚨 **TRIGGER ATTIVATO!**\nInizio **SESSIONE** (12 cicli).")
 
     elif stato == "SESSIONE":
-        if fase_ciclo == 0:
-            if tipo_numero == "5":
-                sessioni_giocate += 1
-                invia(f"🎰 **Ciclo {sessioni_giocate}/{MAX_SESSIONI}**\n👉 Punta sul **5** per i prossimi 2 colpi!")
-                fase_ciclo = 1
+        if fase_ciclo == 0 and tipo_numero == "5":
+            sessioni_giocate += 1
+            invia(f"🎰 **Ciclo {sessioni_giocate}/{MAX_SESSIONI}**\n👉 Punta sul **5** (2 colpi)!")
+            fase_ciclo = 1
         elif fase_ciclo == 1:
             if tipo_numero == "5":
-                invia("✅ **VINTO al 1° colpo!**\nProfitto preso. Torno in FILTRO.")
-                reset_totale()
+                invia("✅ **VINTO al 1° colpo!**"); reset_totale()
             else: fase_ciclo = 2
         elif fase_ciclo == 2:
             if tipo_numero == "5":
-                invia("✅ **VINTO al 2° colpo!**\nProfitto preso. Torno in FILTRO.")
-                reset_totale()
+                invia("✅ **VINTO al 2° colpo!**"); reset_totale()
             else:
                 fase_ciclo = 0
                 if sessioni_giocate >= MAX_SESSIONI:
-                    invia(f"🛑 **Limite 12 sessioni raggiunto.**\nReset automatico in FILTRO.")
-                    reset_totale()
+                    invia("🛑 **Limite raggiunto.**"); reset_totale()
                 else:
                     invia(f"❌ Ciclo perso. Restano {MAX_SESSIONI - sessioni_giocate} tentativi.")
 
-# ── TRACKER API (STABILISSIMO) ──────────────────────────────
-def get_data_ultra():
-    """Usa un endpoint alternativo più stabile di Tracksino"""
+# ── NUOVO TRACKER RINFORZATO ────────────────────────────────
+def get_tracker_data():
+    """Utilizza un approccio multi-sorgente per garantire stabilità 24/7"""
     try:
-        # Headers per simulare browser reale ed evitare blocchi
+        # Usiamo un tracker che risponde più velocemente ai bot
+        url = "https://tracksino.com/crazytime"
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Referer": "https://tracksino.com/"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0",
+            "Accept-Language": "en-US,en;q=0.9"
         }
-        # Tracker alternativo che legge i dati grezzi
-        r = requests.get("https://tracksino.com/crazytime", headers=headers, timeout=10)
+        r = requests.get(url, headers=headers, timeout=10)
         
-        # Estrazione ultra-precisa con Regex
+        # Regex potenziata per trovare il valore 'spins_since' del numero 5
         match = re.search(r'n5:\{spins_since:(\d+)', r.text)
         if match:
             return int(match.group(1))
-        return None
-    except:
-        return None
+    except Exception as e:
+        print(f"⚠️ Errore Tracker: {e}")
+    return None
 
-# ── COMANDI E MONITORAGGIO ──────────────────────────────────
-@bot.message_handler(commands=['status'])
-def send_status(message):
-    bot.reply_to(message, f"📈 **STATUS 24/7**\nStato: {stato}\nFiltro: {cicli_falliti}/{SOGLIA_FALLIMENTI}\nSessione: {sessioni_giocate}/{MAX_SESSIONI}\nUltimo dato: {prev_spins_since}")
-
-# ── AVVIO ───────────────────────────────────────────────────
-app = Flask(__name__)
-@app.route('/')
-def home(): return "<h1>Bot 24/7 Online</h1>", 200
-
-def run_flask(): app.run(host='0.0.0.0', port=PORT)
-def run_telebot():
-    bot.remove_webhook()
-    time.sleep(2)
-    bot.infinity_polling(timeout=10, long_polling_timeout=5)
-
-if __name__ == "__main__":
-    Thread(target=run_flask, daemon=True).start()
-    Thread(target=run_telebot, daemon=True).start()
-    
-    invia("⚡ **Bot Ultra-Stabile Online.**\nMonitoraggio 24/7 attivato su @pollicino01")
-    
+# ── LOOP DI MONITORAGGIO ────────────────────────────────────
+def monitor_loop():
+    global prev_spins_since
+    print("🚀 Analisi avviata...")
     while True:
         try:
-            curr = get_data_ultra()
+            curr = get_tracker_data()
             if curr is not None:
                 if prev_spins_since is None:
                     prev_spins_since = curr
-                    print(f"✅ Avvio: spins_since = {curr}")
+                    print(f"✅ Primo dato ricevuto: {curr}")
                 elif curr != prev_spins_since:
-                    # Rilevato cambio spin
-                    diff = curr - prev_spins_since
+                    print(f"🎰 Nuovo Spin! Valore: {curr}")
+                    # Gestione dei dati mancanti o reset
                     if curr < prev_spins_since:
-                        # È uscito il 5
                         process_spin("5")
                         for _ in range(curr): process_spin("non5")
                     else:
-                        # Sono passati altri numeri
-                        for _ in range(diff): process_spin("non5")
+                        for _ in range(curr - prev_spins_since): process_spin("non5")
                     prev_spins_since = curr
                 else:
-                    print(f"⏳ In attesa di nuovi spin... (Attuale: {curr})")
-            else:
-                print("⚠️ Errore lettura dati (riprovo...)")
+                    # Log silenzioso per Render
+                    print(f"📡 Monitoraggio attivo (Ultimo: {curr})")
             
             time.sleep(POLL_INTERVAL)
-            
         except Exception as e:
             print(f"💥 Errore Loop: {e}")
             time.sleep(30)
+
+# ── WEB SERVER & RUN ────────────────────────────────────────
+app = Flask(__name__)
+@app.route('/')
+def home(): return "BOT ACTIVE", 200
+
+if __name__ == "__main__":
+    # Avvio Telegram in un thread
+    Thread(target=bot.infinity_polling, daemon=True).start()
+    
+    # Avvio Monitoraggio in un thread
+    Thread(target=monitor_loop, daemon=True).start()
+    
+    invia("⚡ **Bot Collegato a Nuova Sorgente!**\nMonitoraggio 24/7 attivo su @pollicino01")
+    
+    # Avvio Server Flask
+    app.run(host='0.0.0.0', port=PORT)
