@@ -9,114 +9,142 @@ import telebot
 from flask import Flask
 from threading import Thread
 
-# --- LOGGING ---
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+# ── LOGGING ──────────────────────────────────────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 log = logging.getLogger("crazy-time-bot")
 
-# --- CREDENZIALI (Inserite direttamente per evitare errori) ---
-TELEGRAM_TOKEN = "8754079194:AAEOU2e5HsWnUW1af_vOhEhf7LXU8KciHOM"
-CHAT_ID        = "670873588"
-PORT           = int(os.environ.get("PORT", 10000))
-TRACKSINO_URL  = "https://tracksino.com/crazytime"
+# ── CONFIGURAZIONE ───────────────────────────────────────────
+# Il bot leggerà queste informazioni dalle "Environment Variables" di Render
+TOKEN      = os.environ.get("TELEGRAM_TOKEN")
+CHANNEL_ID = os.environ.get("CHANNEL_ID") # Inserisci @pollicino01 su Render
+PORT       = int(os.environ.get("PORT", 10000))
 
-bot = telebot.TeleBot(TELEGRAM_TOKEN)
+if not TOKEN or not CHANNEL_ID:
+    log.error("❌ Errore: TELEGRAM_TOKEN o CHANNEL_ID non impostati su Render!")
 
-# --- STATO MACCHINA ---
+bot = telebot.TeleBot(TOKEN)
+
+# ── STATO DELLA LOGICA (8 FILTRO / 12 SESSIONE) ──────────────
 stato            = "FILTRO"
 fase_ciclo       = 0
 cicli_falliti    = 0
 sessioni_contate = 0
-prev_spins_since = None
+ultimo_timestamp = None 
 
 def invia(msg):
+    """Invia messaggi al canale Telegram"""
     try:
-        bot.send_message(CHAT_ID, msg)
-        log.info(f"📤 Inviato: {msg[:30]}...")
+        bot.send_message(CHANNEL_ID, msg)
+        log.info(f"📤 Telegram inviato: {msg[:40]}...")
     except Exception as e:
-        log.error(f"Errore Telegram: {e}")
+        log.error(f"⚠️ Errore invio Telegram: {e}")
 
-# --- LOGICA 8 FILTRO / 12 SESSIONE ---
-def process_spin(tipo):
+# ── LOGICA DI ANALISI DEGLI SPIN ─────────────────────────────
+def analizza_risultato(valore):
     global stato, fase_ciclo, cicli_falliti, sessioni_contate
-    is_5 = (tipo == "5")
+    is_5 = (str(valore) == "5")
 
     if stato == "FILTRO":
         if fase_ciclo == 0 and is_5: 
             fase_ciclo = 1
         elif fase_ciclo == 1:
-            fase_ciclo = 0 if is_5 else 2
+            if is_5: fase_ciclo = 0 # Reset se esce un altro 5 subito
+            else: fase_ciclo = 2
         elif fase_ciclo == 2:
             if is_5: 
                 fase_ciclo = 0
             else:
+                # CICLO FALLITO
                 cicli_falliti += 1
                 fase_ciclo = 0
                 invia(f"❌ Ciclo fallito {cicli_falliti}/8")
                 if cicli_falliti >= 8:
                     stato, sessioni_contate = "SESSIONE", 0
-                    invia("⚠️ TRIGGER! Inizia SESSIONE (12 cicli).")
+                    invia("⚠️ TRIGGER! Inizia SESSIONE (12 cicli). Attendi il prossimo 5 per puntare.")
 
     elif stato == "SESSIONE":
         if fase_ciclo == 0 and is_5:
-            invia(f"🎰 Ciclo {sessioni_contate + 1}/12 - PUNTA ORA!")
+            invia(f"🎰 Ciclo {sessioni_contate + 1}/12 - PUNTA ORA SUL 5!")
             fase_ciclo = 1
         elif fase_ciclo == 1:
             if is_5:
-                invia("✅ VINTO!")
+                invia("✅ VINTO al 1° colpo! 🎉")
                 stato, cicli_falliti, fase_ciclo = "FILTRO", 0, 0
             else:
                 fase_ciclo = 2
-                invia("⚠️ Perso 1° colpo")
+                invia("⚠️ Perso 1° colpo - Punta ancora sul 5")
         elif fase_ciclo == 2:
             if is_5:
-                invia("✅ VINTO al 2°!")
+                invia("✅ VINTO al 2° colpo! 🎉")
                 stato, cicli_falliti, fase_ciclo = "FILTRO", 0, 0
             else:
                 sessioni_contate += 1
                 fase_ciclo = 0
                 if sessioni_contate >= 12:
-                    invia("🛑 Sessione chiusa.")
+                    invia("🛑 Sessione conclusa senza vincita. Reset a Filtro.")
                     stato, cicli_falliti = "FILTRO", 0
                 else:
-                    invia(f"❌ Ciclo perso. Restano {12-sessioni_contate}")
+                    invia(f"❌ Ciclo perso. Restano {12-sessioni_contate} cicli nella sessione.")
 
-# --- PARSER DATI ---
+# ── RECUPERO DATI (CASINOSCORES API) ─────────────────────────
 def get_data():
+    """Recupera gli ultimi spin da Casinoscores (più stabile di Tracksino)"""
+    url = "https://api.casinoscores.com/svc-evolution-game-events/api/events/crazytime/recent?limit=3"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Origin": "https://casinoscores.com"
+    }
     try:
-        h = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0"}
-        r = requests.get(f"{TRACKSINO_URL}?v={random.random()}", headers=h, timeout=15)
-        if r.status_code != 200: return None
-        
-        # Estrazione sicura spins_since di n5
-        match = re.search(r'n5\s*:\s*\{[^}]*spins_since\s*:\s*(\w+)', r.text)
-        if match:
-            t = match.group(1)
-            if t.isdigit(): return int(t)
-            v_match = re.search(f'"{t}":(\d+)', r.text)
-            if v_match: return int(v_match.group(1))
+        r = requests.get(url, headers=headers, timeout=10)
+        if r.status_code == 200:
+            return r.json()
         return None
-    except: return None
+    except Exception as e:
+        log.error(f"❌ Errore API: {e}")
+        return None
 
-# --- WEB SERVER PER RENDER ---
+# ── WEB SERVER (KEEPALIVE) ───────────────────────────────────
 app = Flask(__name__)
 @app.route('/')
-def home(): return "BOT OK", 200
+def health(): return "BOT CRAZY TIME ONLINE", 200
 
-def loop():
-    global prev_spins_since
+def run_flask():
+    app.run(host="0.0.0.0", port=PORT)
+
+# ── LOOP PRINCIPALE ──────────────────────────────────────────
+def bot_loop():
+    global ultimo_timestamp
     log.info("🚀 Monitoraggio avviato...")
+    invia("🚀 Bot Crazy Time ONLINE\nSorgente: Casinoscores | Logica: 8/12")
+
     while True:
-        curr = get_data()
-        if curr is not None:
-            if prev_spins_since is not None and curr != prev_spins_since:
-                if curr < prev_spins_since:
-                    process_spin("5")
-                    for _ in range(curr): process_spin("non5")
-                else:
-                    for _ in range(curr - prev_spins_since): process_spin("non5")
-            prev_spins_since = curr
-        time.sleep(random.uniform(15, 25))
+        dati = get_data()
+        if dati and len(dati) > 0:
+            ultimo_evento = dati[0]
+            ts_attuale = ultimo_evento.get("id")
+            risultato = str(ultimo_evento.get("result", ""))
+
+            if ultimo_timestamp is not None and ts_attuale != ultimo_timestamp:
+                log.info(f"🎰 Nuovo numero: {risultato}")
+                analizza_risultato(risultato)
+            
+            ultimo_timestamp = ts_attuale
+        
+        # Attesa casuale per evitare blocchi
+        time.sleep(random.uniform(10, 15))
 
 if __name__ == "__main__":
-    Thread(target=lambda: app.run(host="0.0.0.0", port=PORT)).start()
-    loop()
+    # Avvia Flask per mantenere vivo il servizio su Render
+    Thread(target=run_flask, daemon=True).start()
+    
+    # Avvia il monitoraggio
+    while True:
+        try:
+            bot_loop()
+        except Exception as e:
+            log.error(f"💥 Crash: {e}. Riavvio tra 20 secondi...")
+            time.sleep(20)
