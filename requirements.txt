@@ -1,4 +1,0 @@
-pyTelegramBotAPI
-requests
-Flask
-cloudscraper
